@@ -407,7 +407,7 @@ body.oba-bg-logos #toast{ z-index:1000; }
 // ── CONSTANTS ──
 const PIN     = '128976';
 let BIN_ID = localStorage.getItem('oba_u14_bin_id') || '69f0945e856a68218980aa6b';
-const BIN_KEY = '$2a$10$gVC5tMMMYQVj1ClnAoF9Xu4SaVjE7cdQNZz.6m0rDee1A38E4yxDq';
+const BIN_KEY = '$2a$10$nj9pckFuiBt0oO2btSn92OygewVj7PXGGu7yEPAW6M.DjP7WNLX5G';
 const BIN_BASE = 'https://api.jsonbin.io/v3/b/'; const BIN_URL = BIN_BASE + BIN_ID;
 const LS_KEY  = 'oba_u14_hub_v1';
 
@@ -697,6 +697,15 @@ async function loadFromCloud() {
       console.warn('[EOBA] Bin not found, creating new one...');
       BIN_ID = ''; localStorage.removeItem('oba_u14_bin_id');
       await createBin(); return;
+    }
+    if(res.status === 401) {
+      /* Auth failure — master key not accepted for this bin. We do NOT
+         try to recreate the bin (which would orphan all existing data).
+         Surface a clear diagnostic and bail. The user must verify
+         (a) BIN_ID is correct, and (b) BIN_KEY matches an account that
+         owns or has access to this bin. */
+      console.error('[EOBA] AUTH FAILED 401: master key not authorized for bin ' + BIN_ID + '. Verify BIN_ID and BIN_KEY in index.html match a jsonbin.io account that owns this bin.');
+      return;
     }
     if(!res.ok) { console.warn('[EOBA] load failed:', res.status); return; }
     const data = await res.json();
