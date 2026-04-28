@@ -1115,6 +1115,22 @@ function allRRDone(t) {
     const h=+sc.home, a=+sc.away; return !isNaN(h)&&!isNaN(a)&&h!==a;
   });
 }
+/* Returns true when all RR games WITHIN a single pool are finalized. Used
+   for pool tournaments to fill in playoff seeds as soon as that pool's
+   standings are locked, without waiting for the other pool to finish. */
+function poolRRDone(t, poolLetter) {
+  if (!t.pools || !t.pools[poolLetter]) return false;
+  const ids = new Set(t.pools[poolLetter]);
+  /* A game is "in this pool" if both teams belong to it. */
+  const poolGames = (t.games || []).filter(g => ids.has(g.home) && ids.has(g.away));
+  if (poolGames.length === 0) return false;
+  return poolGames.every(g => {
+    const sc = t.scores[g.id];
+    if (!sc || sc.home == null || sc.away == null) return false;
+    const h = +sc.home, a = +sc.away;
+    return !isNaN(h) && !isNaN(a) && h !== a;
+  });
+}
 function pRes(t,id) {
   const sc=t.playoffScores[id]; if(!sc||sc.home==null||sc.away==null) return null;
   const h=+sc.home,a=+sc.away; return (isNaN(h)||isNaN(a))?null:{h,a};
@@ -1129,16 +1145,22 @@ function slot(t,desc,st,defs) {
   }
   /* Pool-aware seed: '1A' = 1st of pool A, '2B' = 2nd of pool B, etc.
      Reads st.byPool[poolLetter][rank-1] which calcStandings populates
-     when t.pools is defined. */
+     when t.pools is defined. We only fill in the seed once that pool's
+     round-robin is complete — partial standings can shuffle as more games
+     come in, so it's safer to wait for the whole pool to finish. */
   const poolMatch = typeof desc === 'string' && desc.match(/^(\d+)([A-Z])$/);
   if (poolMatch && st && st.byPool) {
     const rank = parseInt(poolMatch[1], 10);
     const pool = poolMatch[2];
+    /* Only commit to a team when that pool's standings are locked */
+    if (!poolRRDone(t, pool)) {
+      return { id: null, name: 'Pool ' + pool + ' #' + rank, seed: desc, tbd: true };
+    }
     const arr = st.byPool[pool] || [];
     const tm = arr[rank - 1];
     return tm
       ? { id: tm.id, name: tm.name, seed: desc }
-      : { id: null, name: '#' + desc + ' TBD', seed: desc, tbd: true };
+      : { id: null, name: 'Pool ' + pool + ' #' + rank, seed: desc, tbd: true };
   }
   const map = {
     'W_PI': ()=>pWin(t,'PI',st,defs),
@@ -1296,12 +1318,17 @@ function renderBracket(t,st) {
   const defs=playoffDefs(t.numTeams || t.teams.length);
   if(!defs.length){if(nEl)nEl.textContent='';bEl.innerHTML='<div style="padding:16px;color:var(--muted);font-style:italic">No playoff format for '+t.teams.length+' teams</div>';return;}
   const medalFor = r => r.includes('Gold') ? '\uD83E\uDD47 ' : r.includes('Bronze') ? '\uD83E\uDD49 ' : '';
-  if(!allRRDone(t)){
+  /* For pool tournaments, we don't gate on allRRDone — each Sunday matchup
+     fills in as soon as its source pool is complete. The bracket renders
+     immediately and individual seeds show "Pool X #N" until locked. For
+     non-pool tournaments, keep the original behavior (gate the whole
+     bracket until all RR games are finalized). */
+  if(!t.pools && !allRRDone(t)){
     if(nEl) nEl.textContent='';
     bEl.innerHTML=`<div class="tbd-banner"><div class="tbd-title">To Be Determined</div><div class="tbd-sub">Will populate after all round-robin games are finalized</div><div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:9px">${defs.map(d=>`<div class="bgame" style="border-left-color:var(--border)"><div class="bround">${medalFor(d.round)}${d.round}</div><div class="btime">${d.time}${d.court?' \u00B7 '+d.court:''}</div><div class="bteam tbd-team"><div class="binfo">TBD</div><span>\u2013</span></div><div class="bteam tbd-team"><div class="binfo">TBD</div><span>\u2013</span></div></div>`).join('')}</div></div>`;
     return;
   }
-  if(nEl) nEl.textContent='\u2726 Auto-filled from standings';
+  if(nEl) nEl.textContent = t.pools ? '\u2726 Seeds fill in as each pool completes' : '\u2726 Auto-filled from standings';
   let html='<div class="bgrid">';
   defs.forEach(d=>{
     const info=pInfo(t,d.id,st,defs); if(!info) return;
@@ -2528,9 +2555,15 @@ function apGCScores(t) {
   const reg = (t.games||[]).map(g=>({...g,isPO:false}));
   const defs = playoffDefs(t.numTeams || (t.teams||[]).length) || [];
   const rrReady = allRRDone(t);
+  /* For pool tournaments, render Sunday games at all times — each game's
+     home/away will resolve to a real team id when its source pool's RR is
+     complete, otherwise stay null and display as TBD in the score-entry UI. */
+  const renderPO = defs.length && (t.pools || rrReady);
   let po = [];
-  if (rrReady && defs.length) {
-    /* Standings only meaningful once RR is done; pInfo seeds team names. */
+  if (renderPO) {
+    /* Standings only fully meaningful once RR is done, but for pool
+       tournaments we let pInfo/slot return placeholder teams for unlocked
+       pools, which is exactly what the public bracket does too. */
     const st = calcStandings(t);
     po = defs.map(d => {
       const info = pInfo(t, d.id, st, defs);
@@ -2552,10 +2585,14 @@ function apGCScores(t) {
         });
         if (match) courtId = match.id;
       }
+      /* Use the tournament-appropriate Sunday date label. For the U14
+         tournament the Sunday is May 11; for legacy EOBA tournaments it's
+         Apr 26. Derive from the tournament id rather than hardcoding. */
+      const sundayLabel = t.id === 'oba_u14_2026' ? 'Sun, May 11' : 'Sun, Apr 26';
       return {
         id: d.id,
         isPO: true,
-        day: 'Sun, Apr 26',
+        day: sundayLabel,
         time: d.time || '',
         round: d.round || '',
         label: d.round || 'Playoff',
@@ -2570,7 +2607,10 @@ function apGCScores(t) {
   const allGames = reg.concat(po);
   if(!allGames.length) return '<div class="ap-empty">No games scheduled</div>';
   const byDay={};allGames.forEach(g=>{const d=g.day||'TBD';if(!byDay[d])byDay[d]=[];byDay[d].push(g);});
-  let h=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">Enter final scores. Click <strong>Save</strong> after each game.${!rrReady && defs.length ? ' <em>Sunday playoff games will appear once all Saturday round-robin games are finalized.</em>' : ''}</div>`;
+  const helpText = t.pools
+    ? 'Enter final scores. Click <strong>Save</strong> after each game. <em>Sunday playoff matchups fill in as each pool completes its round-robin games.</em>'
+    : `Enter final scores. Click <strong>Save</strong> after each game.${!rrReady && defs.length ? ' <em>Sunday playoff games will appear once all Saturday round-robin games are finalized.</em>' : ''}`;
+  let h=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">${helpText}</div>`;
   Object.keys(byDay).forEach(day=>{
     h+=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);border-bottom:2px solid var(--orange);padding:4px 0 3px;margin:14px 0 8px">${day}</div>`;
     byDay[day].forEach(g=>{
