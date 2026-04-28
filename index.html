@@ -729,10 +729,16 @@ async function loadFromCloud() {
       /* Merge tournaments — prefer cloud data but keep local logos */
       if(rec.tournaments && rec.tournaments.length) {
         const localT = appState.tournaments;
-        /* Standalone U14 site: only accept the U14 tournament from cloud.
-           Earlier builds shared a single JSONBin between sites, which left
-           U13/U17 records in this bin. We filter them out here. */
-        appState.tournaments = rec.tournaments.filter(t => isSiteTournament(t.id));
+        /* Filter cloud tournaments to ones this site is responsible for */
+        const cloudFiltered = rec.tournaments.filter(t => isSiteTournament(t.id));
+        /* Preserve any LOCAL site-tournament that's missing from cloud — for
+           example, when we deploy a new tournament (Div 16) and the cloud
+           bin still only holds the old one (Div 17). Without this merge,
+           the cloud-replaces-local pattern would wipe Div 16 on every poll
+           until syncToCloud finally pushes it. */
+        const cloudIds = new Set(cloudFiltered.map(t => t.id));
+        const localOnly = localT.filter(t => isSiteTournament(t.id) && !cloudIds.has(t.id));
+        appState.tournaments = cloudFiltered.concat(localOnly);
         /* Restore logos from local (cloud strips them to save space) */
         appState.tournaments.forEach(ct => {
           const lt = localT.find(x => x.id === ct.id);
@@ -1233,7 +1239,16 @@ function renderHeader(t) {
   const tEl=document.getElementById('headerTitle');
   const mEl=document.getElementById('headerMeta');
   if(!t){tEl.textContent='No Active Tournament';mEl.innerHTML='';return;}
-  tEl.innerHTML=`<span>${t.division}</span> ${t.stream} \u2014 <span>${t.gender}</span>`;
+  /* When this site hosts both U14 site tournaments, show a combined title
+     ("U14 BOYS \u2014 DIVISIONS 16 & 17") so the page identity stays steady
+     even as the user switches the active division via the dropdown. */
+  const ts = appState.tournaments || [];
+  const hasBoth = ts.find(x => x.id === 'oba_u14_2026') && ts.find(x => x.id === 'oba_u14_div16_2026');
+  if (hasBoth) {
+    tEl.innerHTML = '<span>U14</span> BOYS \u2014 <span>DIVISIONS 16 &amp; 17</span>';
+  } else {
+    tEl.innerHTML = `<span>${t.division}</span> ${t.stream} \u2014 <span>${t.gender}</span>`;
+  }
   /* Venues: split on ' / ', expand abbreviations, each on its own row */
   const venues = (t.location||'').split(/\s*\/\s*/).filter(Boolean);
   const venueHtml = venues.map(v=>`<span style="display:block;text-align:center">&#128205; ${expandVenueName(v)}</span>`).join('');
@@ -1909,9 +1924,31 @@ async function init(){
   updateSyncStatus();
 
   /* STAGE 2 — pull authoritative cloud state in the background and re-render
-     when it arrives. If cloud has newer data, it replaces what the user saw. */
+     when it arrives. If cloud has newer data, it replaces what the user saw.
+     After the pull, if any seed tournament is missing from cloud (e.g. we
+     just deployed Div 16 and the bin only has Div 17), push the merged
+     state up so future polls find both tournaments and the dropdown stays
+     visible across all devices. */
   loadFromCloud().then(() => {
     if (!Array.isArray(appState.analytics)) appState.analytics = [];
+    /* Detect missing seeds and re-add them — loadFromCloud may have
+       replaced appState.tournaments with cloud-only contents. */
+    let added = false;
+    if (!appState.tournaments.find(t => t.id === 'oba_u14_2026')) {
+      appState.tournaments.push(JSON.parse(JSON.stringify(DEFAULT_T3)));
+      added = true;
+    }
+    if (!appState.tournaments.find(t => t.id === 'oba_u14_div16_2026')) {
+      appState.tournaments.push(JSON.parse(JSON.stringify(DEFAULT_T_DIV16)));
+      added = true;
+    }
+    if (added) {
+      saveLocal();
+      /* Push the merged state up so other devices see both tournaments on
+         their next poll. _cloudLoadedOk is true at this point because the
+         cloud pull above completed, so syncToCloud's safety guard passes. */
+      syncToCloud();
+    }
     render();
     updateSyncStatus();
   });
@@ -1986,6 +2023,25 @@ function renderAdminPanel() {
     </div></div>
   <div class="ap-tabs">${tabs.map(tab=>`<button class="ap-tab${adminTab===tab?' active':''}" onclick="setTab('${tab}')">${labels[tab]}</button>`).join('')}</div>
   <div class="ap-body">`;
+  /* In-panel division switcher: when there are multiple site tournaments,
+     show a compact row at the top of the panel body so admins (and GCs in
+     particular) can switch between divisions without leaving the panel.
+     Hidden when only one tournament exists. */
+  if ((appState.tournaments || []).length >= 2) {
+    const ts = appState.tournaments;
+    const opts = ts.map(tt => {
+      const lbl = (tt.division && tt.gender)
+        ? `${tt.division} ${tt.stream || 'Boys'} \u2014 ${tt.gender}`
+        : (tt.name || tt.id);
+      const sel = (tt.id === appState.activeTournamentId) ? ' selected' : '';
+      return `<option value="${tt.id}"${sel}>${lbl}</option>`;
+    }).join('');
+    html += `<div style="display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:14px">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange)">Division</span>
+      <select onchange="setActive(this.value); renderAdminPanel(); renderPublicOnly();"
+        style="background:var(--bg);color:var(--silver);border:1px solid var(--border);border-radius:5px;padding:6px 10px;font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;flex:1;cursor:pointer">${opts}</select>
+    </div>`;
+  }
   if(adminTab==='tournaments')      html+=apTournaments();
   else if(adminTab==='teams')       html+=apTeams(t);
   else if(adminTab==='rosters')     html+=apRosters(t);
