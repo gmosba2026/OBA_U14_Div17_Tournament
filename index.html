@@ -263,11 +263,13 @@ body.oba-bg-logos::before,
 body.oba-bg-logos::after{
   content:"";
   position:fixed;
-  /* Pushed down ~2 inches from where the header ends so the logos sit
-     well below the title area. */
-  top:312px; bottom:0;
+  /* Red strip runs from the top of the page all the way down. The logos
+     are positioned within the strip starting ~312px from the top (about
+     2 inches), leaving the upper portion as a solid red band that visually
+     connects to the page header. */
+  top:0; bottom:0;
   width:200px;
-  background-position:center 20px;
+  background-position:center 332px;
   background-repeat:no-repeat;
   background-size:160px auto;
   background-color:#bf343f;
@@ -407,7 +409,7 @@ const PIN     = '128976';
 let BIN_ID = localStorage.getItem('oba_u14_bin_id') || '69f0945e856a68218980aa6b';
 const BIN_KEY = '$2a$10$gVC5tMMMYQVj1ClnAoF9Xu4SaVjE7cdQNZz.6m0rDee1A38E4yxDq';
 const BIN_BASE = 'https://api.jsonbin.io/v3/b/'; const BIN_URL = BIN_BASE + BIN_ID;
-const LS_KEY  = 'eoba_hub_v1';
+const LS_KEY  = 'oba_u14_hub_v1';
 
 /* Role constants — canonical string values. Used consistently for storage,
    filtering, and display. Never free-text these strings elsewhere. */
@@ -532,6 +534,18 @@ function loadLocal() {
   try {
     const d = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
     if (d.appState) appState = d.appState;
+    /* Standalone U14 site: scrub any non-U14 tournaments that may have
+       leaked in via stale localStorage (e.g., browser previously visited a
+       sister site that wrote to a shared key). Defense-in-depth even though
+       the LS_KEY is now namespaced. */
+    if (Array.isArray(appState.tournaments)) {
+      appState.tournaments = appState.tournaments.filter(t => t && t.id === 'oba_u14_2026');
+    }
+    /* If activeTournamentId points to a stripped tournament, clear it so
+       seed logic picks up the U14 fresh. */
+    if (appState.activeTournamentId && appState.activeTournamentId !== 'oba_u14_2026') {
+      appState.activeTournamentId = null;
+    }
     /* Admin state is deliberately NOT persisted across reloads — users must
        log in fresh each browser session. */
     isAdmin = false;
@@ -756,8 +770,14 @@ async function loadFromCloud() {
       }
       if(rec.gymCaptainPin) appState.gymCaptainPin = rec.gymCaptainPin;
       if(Array.isArray(rec.analytics)) appState.analytics = rec.analytics;
-      if(!appState.activeTournamentId && rec.activeTournamentId)
+      if(!appState.activeTournamentId && rec.activeTournamentId === 'oba_u14_2026')
         appState.activeTournamentId = rec.activeTournamentId;
+      /* Defensive: if cloud activeTournamentId points at a non-U14 tournament
+         (legacy data from the era when this bin was shared with the EOBA
+         site), force the active to be U14. */
+      if (appState.activeTournamentId !== 'oba_u14_2026') {
+        appState.activeTournamentId = 'oba_u14_2026';
+      }
       /* Ensure tournament courts/playoffGames are present (U14 only) */
       [DEFAULT_T3].forEach(seed => {
         const t = appState.tournaments.find(x => x.id === seed.id);
