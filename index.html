@@ -1740,12 +1740,15 @@ function tryLogin() {
   if(v===PIN){
     isAdmin=true; loginRole='admin';
     saveLocal(); closePinModal(); render();
-    openAdminPanel('tournaments');
+    /* Defer the panel open by one tick so the click that triggered Submit
+       finishes propagating first — otherwise it can bubble onto the
+       newly-visible apOverlay, whose onclick closes the panel. */
+    setTimeout(()=>openAdminPanel('tournaments'), 0);
     showToast('\u26A1 Admin unlocked');
   } else if(v===gcPin){
     isAdmin=true; loginRole='gym';
     saveLocal(); closePinModal(); render();
-    openAdminPanel('scores');
+    setTimeout(()=>openAdminPanel('scores'), 0);
     showToast('\uD83D\uDEA9 Gym Captain unlocked');
   } else {
     const inp=document.getElementById('pinInput'); inp.className='pin-input error';
@@ -2090,10 +2093,24 @@ function renderAdminPanel() {
      Hidden when only one tournament exists. */
   if ((appState.tournaments || []).length >= 2) {
     const ts = appState.tournaments;
-    const opts = ts.map(tt => {
-      const lbl = (tt.division && tt.gender)
-        ? `${tt.division} ${tt.stream || 'Boys'} \u2014 ${tt.gender}`
-        : (tt.name || tt.id);
+    /* Sort: Division 16 first, Division 17 second, anything else after.
+       Mirrors the public dropdown order. */
+    const order = { 'oba_u14_div16_2026': 0, 'oba_u14_2026': 1 };
+    const sorted = ts.slice().sort((a, b) => {
+      const oa = order[a.id] ?? 99;
+      const ob = order[b.id] ?? 99;
+      return oa - ob;
+    });
+    /* Use tournament ID as the primary label signal so Div 16/17 always
+       appear, even if cloud copies are missing division/gender fields. */
+    const opts = sorted.map(tt => {
+      let lbl;
+      if (tt.id === 'oba_u14_div16_2026') lbl = 'U14 Boys \u2014 Division 16';
+      else if (tt.id === 'oba_u14_2026')   lbl = 'U14 Boys \u2014 Division 17';
+      else if (tt.division && tt.gender)
+        lbl = `${tt.division} ${tt.stream || 'Boys'} \u2014 ${tt.gender}`;
+      else
+        lbl = (tt.name || tt.id);
       const sel = (tt.id === appState.activeTournamentId) ? ' selected' : '';
       return `<option value="${tt.id}"${sel}>${lbl}</option>`;
     }).join('');
@@ -2328,9 +2345,20 @@ function apAssignments(t) {
       <option value="">-- Unassigned --</option>
       ${pool.map(o=>`<option value="${o.id}"${o.id===val?' selected':''}>${o.name}</option>`).join('')}</select>`;
   }
+  /* Sort and label tournaments using the same scheme as the public dropdown
+     and admin in-panel switcher: Div 16 first, ID-derived labels for the
+     two seeded U14 tournaments. */
+  const _ord = { 'oba_u14_div16_2026': 0, 'oba_u14_2026': 1 };
+  const _sortedList = tournList.slice().sort((a, b) => (_ord[a.id] ?? 99) - (_ord[b.id] ?? 99));
+  const _labelFor = tx => {
+    if (tx.id === 'oba_u14_div16_2026') return 'U14 Boys \u2014 Division 16';
+    if (tx.id === 'oba_u14_2026')        return 'U14 Boys \u2014 Division 17';
+    if (tx.division && tx.gender)        return `${tx.division} ${tx.stream || 'Boys'} \u2014 ${tx.gender}`;
+    return tx.label || tx.name || tx.id;
+  };
   let h=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
     <select onchange="asgnTournId=this.value;renderAdminPanel()" style="flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:13px">
-      ${tournList.map(tx=>`<option value="${tx.id}"${tx.id===asgnTournId?' selected':''}>${tx.label||tx.name}</option>`).join('')}
+      ${_sortedList.map(tx=>`<option value="${tx.id}"${tx.id===asgnTournId?' selected':''}>${_labelFor(tx)}</option>`).join('')}
     </select>
     <button class="ap-btn ap-btn-primary" onclick="printAllAssignments()" style="font-size:11px;white-space:nowrap">&#x1F4CB; Print</button></div>`;
   const allGames=[...(tourn.games||[]).map(g=>({...g,isPO:false})),...(tourn.playoffGames||[]).map(g=>({...g,isPO:true}))];
