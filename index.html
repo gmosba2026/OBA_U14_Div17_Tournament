@@ -2610,9 +2610,9 @@ function apAnalytics() {
   return h;
 }
 
-/* Reimbursement constants — EOBA per-game rates as of 2026 season */
-const REIMB_GC_RATE = 25;       /* Gym Captain $/game */
-const REIMB_OC_RATE = 20;       /* Off-Court Officials $/game (each role) */
+/* Reimbursement constants — OBA per-game rates as of 2026 season */
+const REIMB_GC_RATE = 30;       /* Gym Captain $/game */
+const REIMB_OC_RATE = 25;       /* Off-Court Officials $/game (each role) */
 const REIMB_OTTAWA_GYM_MAX = 600; /* Max gym cost reimbursable for Ottawa teams */
 
 function apReimbursement(t) {
@@ -2891,7 +2891,7 @@ function printReimbursement(tId){
     .note{font-size:11px;color:#888;margin-top:18px;border-top:1px solid #eee;padding-top:10px}
     .btns{margin-top:24px;text-align:center}.btns button{padding:9px 22px;font-size:13px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#fff}@media print{.btns{display:none}}
     </style></head><body>
-    <h1>EOBA Reimbursement Form</h1>
+    <h1>OBA Reimbursement Form</h1>
     <div class="meta">
       <div>Association</div><div>${(r.orgName||'').replace(/</g,'&lt;')}</div>
       <div>Age Group</div><div>${(r.ageGroup||'').replace(/</g,'&lt;')}</div>
@@ -3427,7 +3427,7 @@ function printAllAssignments(){
       sched+=`<tr><td style="padding:4px 6px;border:1px solid #ddd;font-weight:bold">${lbl}</td><td style="padding:4px 6px;border:1px solid #ddd">${g.time||''}</td><td style="padding:4px 6px;border:1px solid #ddd">${offName(go.gc)||na}</td><td style="padding:4px 6px;border:1px solid #ddd">${offName(go.sk)||na}</td><td style="padding:4px 6px;border:1px solid #ddd">${offName(go.sc)||na}</td><td style="padding:4px 6px;border:1px solid #ddd">${offName(go.gs)||na}</td></tr>`;
     });sched+='</table>';
   });
-  const GC=25,OC=20;
+  const GC=30,OC=25;
   const gcFees={},ocFees={};
   allGames.forEach(g=>{const go=g.officials||{};const lbl=g.isPO?g.round||'Playoff':tName(tourn,g.home)+' vs '+tName(tourn,g.away);const gi={label:lbl,day:g.day||'',time:g.time||''};
     if(go.gc){const o=offs.find(x=>x.id===go.gc);if(o){if(!gcFees[go.gc])gcFees[go.gc]={name:o.name,phone:o.phone||'',email:o.email||'',games:[]};gcFees[go.gc].games.push(gi);}}
