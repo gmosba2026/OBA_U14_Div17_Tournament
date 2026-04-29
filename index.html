@@ -670,6 +670,7 @@ function buildSyncPayload() {
   return {
     version: 2,
     _savedAt: Date.now(),
+    _asgnSeeded_v1: appState._asgnSeeded_v1 === true,
     officials: appState.officials || [],
     deletedOfficials: appState.deletedOfficials || {},
     gymCaptainPin: appState.gymCaptainPin || '',
@@ -839,6 +840,7 @@ async function loadFromCloud() {
       }
       if(rec.gymCaptainPin) appState.gymCaptainPin = rec.gymCaptainPin;
       if(Array.isArray(rec.analytics)) appState.analytics = rec.analytics;
+      if(rec._asgnSeeded_v1 === true) appState._asgnSeeded_v1 = true;
       if(!appState.activeTournamentId && isSiteTournament(rec.activeTournamentId))
         appState.activeTournamentId = rec.activeTournamentId;
       /* Defensive: if cloud activeTournamentId is not one of ours, force to
@@ -2084,10 +2086,13 @@ function migrateOfficialRoles() {
 /* One-time backfill: pre-populate official assignments for the Div 17 and
    Div 16 round-robin and Sunday games per the master schedule sheet
    provided by Master. Idempotent — only sets fields that are still
-   unassigned, so it won't overwrite manual edits made through the admin UI.
-   sc (shot clock) intentionally left blank — the master sheet doesn't
-   designate a shot-clock official. */
+   unassigned. After it runs once, sets a flag so subsequent loads (poll
+   cycles, page refreshes) DO NOT re-fill anything — otherwise clearing an
+   assignment back to "Unassigned" would silently re-populate it on the
+   next poll. sc (shot clock) intentionally left blank — the master sheet
+   doesn't designate a shot-clock official. */
 function migrateOfficialAssignments() {
+  if (appState._asgnSeeded_v1) return false;
   let changed = false;
   /* Map: tournament id -> array of [gameId, gc, sk, gs] tuples. */
   const PLAN = {
@@ -2164,6 +2169,10 @@ function migrateOfficialAssignments() {
     });
   });
 
+  /* Mark the seed as applied so this never runs again on this cloud bin —
+     otherwise admins clearing an assignment back to "Unassigned" would have
+     it auto-refilled on the next poll cycle. */
+  appState._asgnSeeded_v1 = true;
   return changed;
 }
 
