@@ -2096,7 +2096,17 @@ function migrateOfficialRoles() {
    assignment back to "Unassigned" would silently re-populate it on the
    next poll. sc (shot clock) intentionally left blank — the master sheet
    doesn't designate a shot-clock official. */
+/* ASSIGNMENTS MIGRATION — DISABLED.
+   The initial seeding has already been written to the cloud bin from
+   earlier deploys. Leaving this active would cause "Unassigned" choices to
+   silently re-fill on the next poll cycle. We force an early exit so the
+   function is a no-op going forward; the cloud copy is now the source of
+   truth and admins can edit assignments freely without them snapping back.
+   Future schedules should be edited through the admin UI directly, not
+   re-seeded from code. */
 function migrateOfficialAssignments() {
+  return false;
+  /* eslint-disable */
   if (appState._asgnSeeded_v1) return false;
   let changed = false;
   /* Map: tournament id -> array of [gameId, gc, sk, gs] tuples. */
