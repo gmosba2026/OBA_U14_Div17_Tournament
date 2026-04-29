@@ -654,7 +654,12 @@ async function syncToCloud() {
     _lastSyncTs = Date.now();
   }
   render();
-  if(document.querySelector('#adminPanel.open')) renderAdminPanel();
+  /* Only rebuild the admin panel after a FAILED sync (where loadFromCloud
+     reverted state and the DOM is now stale). On success the local DOM
+     already reflects exactly what the user did — rebuilding here just
+     resets scroll position and is what makes the panel jump to the top
+     mid-edit. */
+  if(!ok && document.querySelector('#adminPanel.open')) renderAdminPanel();
   updateSyncStatus();
   return ok;
 }
