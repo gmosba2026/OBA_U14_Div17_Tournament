@@ -872,6 +872,7 @@ async function loadFromCloud() {
         });
       });
       migrateOfficialRoles();
+      migrateOfficialAssignments();
       saveLocal();
       _cloudLoadedOk = true;   // Patch B: confirmed v2 snapshot in hand — writes are now safe
     }
@@ -1896,6 +1897,14 @@ const DEFAULT_T3 = {
   scores:{}, playoffScores:{}, rosters:{},
   numTeams: '8pool',
   hideTeamsGrid: true,
+  /* Pre-seed Sunday playoff games so officials can be assigned in advance.
+     home/away resolved dynamically by playoffDefs() at render time. */
+  playoffGames: [
+    { id:'CONS7', day:'Sun, May 3', time:'9:00 AM',  round:'7th Place', court:'c_srb_g2' },
+    { id:'CONS5', day:'Sun, May 3', time:'10:30 AM', round:'5th Place', court:'c_srb_g2' },
+    { id:'BRZ',   day:'Sun, May 3', time:'12:00 PM', round:'Bronze',    court:'c_srb_g2' },
+    { id:'GLD',   day:'Sun, May 3', time:'1:30 PM',  round:'Gold',      court:'c_srb_g2' }
+  ],
   /* Pre-populate Sir Robert Borden HS as a court so contract links work and
      Sunday games can find the venue object. */
   courts: [
@@ -1952,6 +1961,14 @@ const DEFAULT_T_DIV16 = {
   scores:{}, playoffScores:{}, rosters:{},
   numTeams: '8pool',
   hideTeamsGrid: true,
+  /* Pre-seed Sunday playoff games. IDs prefixed with '16_' so they don't
+     collide with the Div 17 playoff IDs in the cloud bin. */
+  playoffGames: [
+    { id:'16_CONS7', day:'Sun, May 3', time:'9:00 AM',  round:'7th Place', court:'c_srb_g1' },
+    { id:'16_CONS5', day:'Sun, May 3', time:'10:30 AM', round:'5th Place', court:'c_srb_g1' },
+    { id:'16_BRZ',   day:'Sun, May 3', time:'12:00 PM', round:'Bronze',    court:'c_srb_g1' },
+    { id:'16_GLD',   day:'Sun, May 3', time:'1:30 PM',  round:'Gold',      court:'c_srb_g1' }
+  ],
   courts: [
     { id:'c_srb_g1', name:'Sir Robert Borden HS - Gym 1', address:'1115 Greenbank Rd, Nepean, ON K2J 5V1' }
   ]
@@ -1967,7 +1984,7 @@ async function init(){
   try { localStorage.removeItem('eoba_login_role'); } catch(e){}
   /* Seed U13 officials if empty. loadFromCloud will overwrite this if cloud has its own list. */
   if(!appState.officials||appState.officials.length===0){
-    appState.officials=[{"id": "o_gc_rich", "role": "Gym Captain", "name": "Rich Reitano", "phone": "613-720-9470", "email": ""}, {"id": "o_gc_jack", "role": "Gym Captain", "name": "Jack Dotten", "phone": "613-277-5031", "email": "jack@myblackdog.com"}, {"id": "o_gc_allison", "role": "Gym Captain", "name": "Allison Harvey", "phone": "613-296-5662", "email": "allisonharvey79@gmail.com"}, {"id": "o_oc_antoni", "role": "Off-Court Official", "name": "Antoni Reitano", "phone": "", "email": "yourhairstylist@msn.com"}, {"id": "o_oc_sammy", "role": "Off-Court Official", "name": "Sammy El", "phone": "343-254-3848", "email": "elmouloudisami@gmail.com"}, {"id": "o_oc_mitchell", "role": "Off-Court Official", "name": "Mitchell Dotten", "phone": "613-852-5078", "email": "mitchell@myblackdog.com"}, {"id": "o_oc_carson", "role": "Off-Court Official", "name": "Carson Harvey", "phone": "", "email": "allisonharvey79@gmail.com"}, {"id": "o_oc_samatar", "role": "Off-Court Official", "name": "Samatar Bakal", "phone": "613-884-1599", "email": "samta.bakal30@gmail.com"}, {"id": "o_oc_kaity", "role": "Off-Court Official", "name": "Kaity Harvey", "phone": "", "email": "allisonharvey79@gmail.com"}, {"id": "o_oc_raheem", "role": "Off-Court Official", "name": "Raheem Tanimowo", "phone": "613-879-4537", "email": "rxhxexmtanimowo@gmail.com"}];
+    appState.officials=[{"id": "o_gc_rich", "role": "Gym Captain", "name": "Rich Reitano", "phone": "613-720-9470", "email": ""}, {"id": "o_gc_jack", "role": "Gym Captain", "name": "Jack Dotten", "phone": "613-277-5031", "email": "jack@myblackdog.com"}, {"id": "o_gc_allison", "role": "Gym Captain", "name": "Allison Harvey", "phone": "613-296-5662", "email": "allisonharvey79@gmail.com"}, {"id": "o_gc_tyler", "role": "Gym Captain", "name": "Tyler MacLaren", "phone": "819-360-4385", "email": "mclaren1083@gmail.com"}, {"id": "o_gc_carman", "role": "Gym Captain", "name": "Carman Cox", "phone": "", "email": ""}, {"id": "o_oc_antoni", "role": "Off-Court Official", "name": "Antoni Reitano", "phone": "", "email": "yourhairstylist@msn.com"}, {"id": "o_oc_sammy", "role": "Off-Court Official", "name": "Sammy El", "phone": "343-254-3848", "email": "elmouloudisami@gmail.com"}, {"id": "o_oc_mitchell", "role": "Off-Court Official", "name": "Mitchell Dotten", "phone": "613-852-5078", "email": "mitchell@myblackdog.com"}, {"id": "o_oc_carson", "role": "Off-Court Official", "name": "Carson Harvey", "phone": "", "email": "allisonharvey79@gmail.com"}, {"id": "o_oc_samatar", "role": "Off-Court Official", "name": "Samatar Bakal", "phone": "613-884-1599", "email": "samta.bakal30@gmail.com"}, {"id": "o_oc_kaity", "role": "Off-Court Official", "name": "Kaity Harvey", "phone": "", "email": "allisonharvey79@gmail.com"}, {"id": "o_oc_raheem", "role": "Off-Court Official", "name": "Raheem Tanimowo", "phone": "613-879-4537", "email": "rxhxexmtanimowo@gmail.com"}, {"id": "o_oc_anna", "role": "Off-Court Official", "name": "Anna McLaren", "phone": "", "email": ""}, {"id": "o_oc_sabrina", "role": "Off-Court Official", "name": "Sabrina", "phone": "", "email": ""}, {"id": "o_oc_brayden", "role": "Off-Court Official", "name": "Brayden Cox", "phone": "", "email": ""}];
     saveLocal();
   }
 
@@ -2029,6 +2046,21 @@ init();
 function migrateOfficialRoles() {
   let changed=false;
   if(!appState.officials) appState.officials=[];
+  /* One-time backfill: ensure Tyler, Anna, and Sabrina exist in the
+     officials list. Idempotent — if their IDs are already present (e.g.
+     this code already ran or the user manually added them), nothing
+     happens. */
+  const required = [
+    { id: 'o_gc_tyler',   role: 'Gym Captain',         name: 'Tyler MacLaren', phone: '819-360-4385', email: 'mclaren1083@gmail.com' },
+    { id: 'o_gc_carman',  role: 'Gym Captain',         name: 'Carman Cox',     phone: '', email: '' },
+    { id: 'o_oc_anna',    role: 'Off-Court Official',  name: 'Anna McLaren',   phone: '', email: '' },
+    { id: 'o_oc_sabrina', role: 'Off-Court Official',  name: 'Sabrina',        phone: '', email: '' },
+    { id: 'o_oc_brayden', role: 'Off-Court Official',  name: 'Brayden Cox',    phone: '', email: '' },
+  ];
+  const have = new Set(appState.officials.map(o => o.id));
+  required.forEach(o => {
+    if (!have.has(o.id)) { appState.officials.push({ ...o }); changed = true; }
+  });
   appState.officials.forEach(o=>{
     const canonical = normalizeRole(o.role);
     if (o.role !== canonical) { o.role = canonical; changed = true; }
@@ -2046,6 +2078,92 @@ function migrateOfficialRoles() {
     });
     t.officials=[];
   });
+  return changed;
+}
+
+/* One-time backfill: pre-populate official assignments for the Div 17 and
+   Div 16 round-robin and Sunday games per the master schedule sheet
+   provided by Master. Idempotent — only sets fields that are still
+   unassigned, so it won't overwrite manual edits made through the admin UI.
+   sc (shot clock) intentionally left blank — the master sheet doesn't
+   designate a shot-clock official. */
+function migrateOfficialAssignments() {
+  let changed = false;
+  /* Map: tournament id -> array of [gameId, gc, sk, gs] tuples. */
+  const PLAN = {
+    'oba_u14_2026': [
+      /* Div 17 — Carman Cox group Friday, Tyler MacLaren group Sat/Sun */
+      [1,  'o_gc_carman', 'o_oc_antoni',  'o_oc_brayden'],
+      [2,  'o_gc_carman', 'o_oc_antoni',  'o_oc_brayden'],
+      [3,  'o_gc_carman', 'o_oc_antoni',  'o_oc_brayden'],
+      [4,  'o_gc_carman', 'o_oc_antoni',  'o_oc_brayden'],
+      [5,  'o_gc_tyler',  'o_oc_sammy',   'o_oc_anna'],
+      [6,  'o_gc_tyler',  'o_oc_sammy',   'o_oc_anna'],
+      [7,  'o_gc_tyler',  'o_oc_sammy',   'o_oc_anna'],
+      [8,  'o_gc_tyler',  'o_oc_sammy',   'o_oc_anna'],
+      [9,  'o_gc_tyler',  'o_oc_sammy',   'o_oc_antoni'],
+      [10, 'o_gc_tyler',  'o_oc_sammy',   'o_oc_antoni'],
+      [11, 'o_gc_tyler',  'o_oc_sammy',   'o_oc_antoni'],
+      [12, 'o_gc_tyler',  'o_oc_sammy',   'o_oc_antoni'],
+      /* Sunday — game 13 = CONS7 (9:00), 14 = CONS5 (10:30), 15 = BRZ (12:00), 16 = GLD (1:30) */
+      ['CONS7', 'o_gc_tyler', 'o_oc_sabrina', 'o_oc_anna'],
+      ['CONS5', 'o_gc_tyler', 'o_oc_sabrina', 'o_oc_anna'],
+      ['BRZ',   'o_gc_tyler', 'o_oc_sammy',   'o_oc_anna'],
+      ['GLD',   'o_gc_tyler', 'o_oc_sammy',   'o_oc_anna'],
+    ],
+    'oba_u14_div16_2026': [
+      /* Div 16 — Jack Dotten group Friday & Sunday with Mitchell + Samatar,
+         Saturday switches scorekeeper to Raheem. */
+      ['16_1',  'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+      ['16_2',  'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+      ['16_3',  'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+      ['16_4',  'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+      ['16_5',  'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      ['16_6',  'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      ['16_7',  'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      ['16_8',  'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      ['16_9',  'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      ['16_10', 'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      ['16_11', 'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      ['16_12', 'o_gc_jack', 'o_oc_raheem',   'o_oc_samatar'],
+      /* Sunday — Mitchell back as scorekeeper */
+      ['16_CONS7', 'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+      ['16_CONS5', 'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+      ['16_BRZ',   'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+      ['16_GLD',   'o_gc_jack', 'o_oc_mitchell', 'o_oc_samatar'],
+    ]
+  };
+
+  /* Verify the official IDs we plan to assign actually exist; missing ones
+     result in non-functional dropdown values. */
+  const officialIds = new Set((appState.officials || []).map(o => o.id));
+
+  Object.entries(PLAN).forEach(([tId, rows]) => {
+    const t = (appState.tournaments || []).find(x => x.id === tId);
+    if (!t) return;
+    rows.forEach(([gameId, gc, sk, gs]) => {
+      const gidStr = String(gameId);
+      let g = (t.games || []).find(x => String(x.id) === gidStr);
+      let isPlayoff = false;
+      if (!g) {
+        g = (t.playoffGames || []).find(x => String(x.id) === gidStr);
+        isPlayoff = true;
+      }
+      if (!g) return;
+      if (!g.officials) g.officials = { gc:null, sk:null, sc:null, gs:null };
+      const want = { gc, sk, gs };
+      ['gc', 'sk', 'gs'].forEach(field => {
+        const wantId = want[field];
+        if (!wantId || !officialIds.has(wantId)) return;
+        /* Only set if still unassigned — preserve manual overrides. */
+        if (!g.officials[field]) {
+          g.officials[field] = wantId;
+          changed = true;
+        }
+      });
+    });
+  });
+
   return changed;
 }
 
