@@ -2443,7 +2443,16 @@ let asgnTournId=null;
 function apAssignments(t) {
   const tournList=appState.tournaments||[];
   if(!tournList.length) return '<div class="ap-empty">No tournaments.</div>';
-  if(!asgnTournId) asgnTournId=(t&&t.id)||tournList[0]?.id||null;
+  /* Always sync to the currently active tournament. The admin panel has two
+     division switchers — the in-panel one at the top of the body (which
+     drives appState.activeTournamentId via setActive) and this tab's own
+     dropdown (which sets asgnTournId). Without this sync, changing the
+     in-panel switcher leaves asgnTournId stale and the tab shows the wrong
+     division. Trust whichever is most recent: prefer the tab dropdown only
+     if the user has explicitly set it AND the active tournament hasn't
+     changed since. Simplest correct behavior: always follow active. */
+  if (t && t.id) asgnTournId = t.id;
+  else if(!asgnTournId) asgnTournId=tournList[0]?.id||null;
   const tourn=tournList.find(x=>x.id===asgnTournId)||tournList[0];
   if(!tourn) return '<div class="ap-empty">No tournament selected.</div>';
   const offs=appState.officials||[];
@@ -2475,7 +2484,7 @@ function apAssignments(t) {
     return tx.label || tx.name || tx.id;
   };
   let h=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <select onchange="asgnTournId=this.value;renderAdminPanel()" style="flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:13px">
+    <select onchange="setActive(this.value);renderAdminPanel();renderPublicOnly()" style="flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:13px">
       ${_sortedList.map(tx=>`<option value="${tx.id}"${tx.id===asgnTournId?' selected':''}>${_labelFor(tx)}</option>`).join('')}
     </select>
     <button class="ap-btn ap-btn-primary" onclick="printAllAssignments()" style="font-size:11px;white-space:nowrap">&#x1F4CB; Print</button></div>`;
